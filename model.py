@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torchvision
-#import wgan_gp
 import torchvision.transforms as T
 from torch.utils.tensorboard import SummaryWriter
 #structure of generator and discriminator
