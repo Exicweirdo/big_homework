@@ -32,6 +32,22 @@ class Tresblock1(torch.nn.Module):
         hid = self.batchnorm(hid)
         out = nn.ReLU()(hid)  + self.identity(x)
         return out
+#resblock without bn
+class resblock(torch.nn.Module):
+    def __init__(self, in_channel:int, out_channel:int, stride:int = 1, dilation:int=1, device = 'cpu') -> None:
+        super(resblock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=in_channel, out_channels=out_channel, kernel_size=3, stride=stride, padding=dilation, dilation=dilation, bias=False, device=device)
+        self.conv2 = nn.Conv2d(in_channels=out_channel, out_channels=out_channel, kernel_size=3, bias=False, device=device)
+        self.downsample = nn.Conv2d(in_channels=in_channel, out_channels=out_channel, kernel_size=1, stride=stride, bias=False, device=device)
+        self.relu = nn.ReLU(inplace=True)
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out+= self.downsample(x)
+        out = self.relu(out)
+        return out
+
 # generatar model
 class Generator(torch.nn.Module):
     def __init__(self, input_shape:int, blocklist, figsize:int, device='cpu') -> None:
@@ -73,22 +89,29 @@ class Generator(torch.nn.Module):
         return 0
 
 class Discriminator(torch.nn.Module):
-    def __init__(self, input_size:int, blocklist, device = 'cpu') -> None:
+    def __init__(self, input_size:int, blocklist, device = 'cpu', use_res = False) -> None:
         super(Discriminator, self).__init__()
         self.device = device
         #self.preprocess = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding='same', device=device)
         in_channel = 3
         self.figsize = input_size
         Layers = []
-        for layer in blocklist:
-            #change channels
-            Layers.extend([
-                nn.Conv2d(in_channel, layer['out_channel'], layer['kernel'],stride=layer['stride'], padding=1, device=device),
-                nn.LeakyReLU()
-            ])
-            #resampling
-            in_channel = layer['out_channel']
-            self.figsize = self.figsize//layer['stride']
+        if use_res==False:
+            for layer in blocklist:
+                #change channels
+                Layers.extend([
+                    nn.Conv2d(in_channel, layer['out_channel'], layer['kernel'],stride=layer['stride'], padding=1, device=device),
+                    nn.LeakyReLU()
+                ])
+                #resampling
+                in_channel = layer['out_channel']
+                self.figsize = self.figsize//layer['stride']
+        else:
+            for layer in block_list:
+                Layers.append(resblock(in_channel, layer['out_channel'], stride=layer['stride'], device=device))
+                in_channel = layer['out_channel']
+                self.figsize = self.figsize//layer['stride']
+             
         self.seq = nn.Sequential(*Layers)
         self.outlinear = nn.Linear(in_features=self.figsize**2*in_channel, out_features=1,device=device)
         self.outchannel = in_channel

@@ -38,6 +38,6 @@ if __name__ == '__main__':
         plt.axis('off')
         ax.imshow(tensorlist[i], interpolation='none')
         
-    gif = animation.FuncAnimation(fig=fig, func=ani, frames=10, interval = 200)
+    gif = animation.FuncAnimation(fig=fig, func=ani, frames=10, interval = 1000, repeat=False)
     gif.save('ani.gif', writer='pillow')
     
