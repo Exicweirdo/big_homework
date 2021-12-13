@@ -1,4 +1,8 @@
 *.pdf
 *.log
 *.json
-./data/*
+*.jpg
+*.png
+
+data/
+runs/
