@@ -21,14 +21,14 @@ device = 'cuda'
 batchsize = 64
 maxiter = 1e5
 if __name__=='__main__':
-    writer = SummaryWriter('./runs/exp1-cifar10/train:{}'.format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    checkpoint_folder = 'cifar10_checkpoint'
+    writer = SummaryWriter('./runs/exp1-cifar10/train_{}'.format(datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")))
+    checkpoint_folder = 'cifar10_checkpoint_res'
     if checkpoint_folder not in os.listdir('.'):
         os.mkdir(os.path.join('./',checkpoint_folder))
 #-----------------------------------build model and optimizer-------------------------------------------
     gene32 = Generator(128,blocklist=gene_blocklist, figsize=32, device=device)
     #gene32 = wgan_gp.Generator().to(device)
-    dis32 = Discriminator(32, blocklist=block_list, device=device)
+    dis32 = Discriminator(32, blocklist=block_list, device=device, use_res=True)
     #dis32 = wgan_gp.Discriminator().to(device)
     optim_g = torch.optim.Adam(gene32.parameters(), lr=2e-4)
     optim_d = torch.optim.Adam(dis32.parameters(), lr=2e-4)

@@ -45,7 +45,7 @@ class resblock(torch.nn.Module):
         out = self.relu(out)
         out = self.conv2(out)
         out+= self.downsample(x)
-        out = self.relu(out)
+        out = nn.ReLU(inplace=True)(out)
         return out
 
 # generatar model
