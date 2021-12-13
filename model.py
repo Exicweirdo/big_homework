@@ -37,7 +37,7 @@ class resblock(torch.nn.Module):
     def __init__(self, in_channel:int, out_channel:int, stride:int = 1, dilation:int=1, device = 'cpu') -> None:
         super(resblock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels=in_channel, out_channels=out_channel, kernel_size=3, stride=stride, padding=dilation, dilation=dilation, bias=False, device=device)
-        self.conv2 = nn.Conv2d(in_channels=out_channel, out_channels=out_channel, kernel_size=3, bias=False, device=device)
+        self.conv2 = nn.Conv2d(in_channels=out_channel, out_channels=out_channel, kernel_size=3, padding='same', bias=False, device=device)
         self.downsample = nn.Conv2d(in_channels=in_channel, out_channels=out_channel, kernel_size=1, stride=stride, bias=False, device=device)
         self.relu = nn.ReLU(inplace=True)
     def forward(self, x):
