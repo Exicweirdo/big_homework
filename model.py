@@ -49,6 +49,18 @@ class resblock(torch.nn.Module):
         return out
 
 # generatar model
+#-------------------------------structure of generator---------------------------------------
+#preprocess step(linear, relu)   input:batchsize*input_shape    output:batchsize*channel*n*n
+#Tresblock*n inchannel  outchannel
+#   convT2d
+#   batchnorm
+#   ReLU
+#   out + upsampling(x)
+#output layer inchannel   3*figsize*figsize
+#   convT2d
+#   Tanh
+#--------------------------------------------------------------------------------------------
+#Caution: output is in range [-1,1], should be convert linearly into [0,1] or [0,255]
 class Generator(torch.nn.Module):
     def __init__(self, input_shape:int, blocklist, figsize:int, device='cpu') -> None:
         super(Generator, self).__init__()
@@ -87,7 +99,23 @@ class Generator(torch.nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0.0)
         return 0
-
+# generatar model
+#-------------------------------structure of discriminator---------------------------------------
+#recieve batchsize*3*input_size*input_size tensor as input(generator output, img should normalized to [0,1] or N(0.5,0.5))
+#if use_res==True
+#   resblock*n inchannel(first is 3)  outchannel
+#       conv2d(no bias)
+#       ReLU
+#       conv2d(no bias)
+#       out + downsampling(x)
+#       ReLU
+#else
+#   [conv2d
+#   LeakyReLU]*n
+#
+#output layer
+#   linear
+#--------------------------------------------------------------------------------------------
 class Discriminator(torch.nn.Module):
     def __init__(self, input_size:int, blocklist, device = 'cpu', use_res = False) -> None:
         super(Discriminator, self).__init__()
@@ -138,10 +166,10 @@ def get_param_num(model:nn.Module):
     param_num = sum(p.numel() for p in model.parameters())
     trainable_param_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return{'Total':param_num, 'Trainable':trainable_param_num}
-
+# using wgan-div to train discriminator with k and p
 def train_discrminator(model:Discriminator, real_data:torch.Tensor, fake_data:torch.Tensor, optimizer:torch.optim.Optimizer, k = 2, p = 6, device = 'cpu'):
     model.train()
-    score_loss = model(fake_data).mean()-model(real_data).mean()#torch.sum(model(fake_data)-model(real_data))/batch_size
+    score_loss = model(fake_data).mean()-model(real_data).mean()
     #compute gradient loss
     mixconst = torch.rand(real_data.size(0), device=device)
     x_mix = torch.tensordot(torch.diag(mixconst), real_data, dims=[[0],[0]]) \
@@ -160,6 +188,7 @@ def train_discrminator(model:Discriminator, real_data:torch.Tensor, fake_data:to
     loss.backward()
     optimizer.step()
     return gradient_loss
+#train generator using discriminator
 def train_generator(g_model:Generator, d_model:Discriminator, randinput:torch.Tensor, optimizer:torch.optim.Optimizer):
     g_model.train()
     d_model.eval()
