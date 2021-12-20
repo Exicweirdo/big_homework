@@ -6,6 +6,7 @@ import torchvision
 import torchvision.transforms as T
 from torch.utils.tensorboard import SummaryWriter
 from model import *
+#A template of the blocklist in gene and dis
 gene_blocklist = [
     {'kernel':2, 'out_channel':256, 'stride':2},
     {'kernel':2, 'out_channel':128, 'stride':2},
@@ -17,9 +18,11 @@ block_list = [
     {'kernel':3, 'out_channel':256, 'stride':2},
     {'kernel':3, 'out_channel':512, 'stride':2},
 ]
+#--------global variables---------------
 device = 'cuda'
 batchsize = 64
-maxiter = 1e5
+maxiter = 2e5
+
 if __name__=='__main__':
     writer = SummaryWriter('./runs/exp1-cifar10/train_{}'.format(datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")))
     checkpoint_folder = 'cifar10_checkpoint_res'
@@ -28,10 +31,12 @@ if __name__=='__main__':
 #-----------------------------------build model and optimizer-------------------------------------------
     gene32 = Generator(128,blocklist=gene_blocklist, figsize=32, device=device)
     #gene32 = wgan_gp.Generator().to(device)
-    dis32 = Discriminator(32, blocklist=block_list, device=device, use_res=True)
+    dis32 = Discriminator(32, blocklist=block_list, device=device, use_res=False)
     #dis32 = wgan_gp.Discriminator().to(device)
     optim_g = torch.optim.Adam(gene32.parameters(), lr=2e-4)
     optim_d = torch.optim.Adam(dis32.parameters(), lr=2e-4)
+    gene32.load_state_dict(torch.load('./cifar10_checkpoint/gene_checkpoint_100000.pth'))
+    dis32.load_state_dict(torch.load('./cifar10_checkpoint/dis_checkpoint_100000.pth'))
 #-------------------------------------load and transform dataset------------------------------------------
     transform = T.Compose(
     [T.ToTensor(),
@@ -42,7 +47,7 @@ if __name__=='__main__':
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batchsize, shuffle=True, drop_last=True)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batchsize, shuffle=True, drop_last=True)
 #--------------------------------------train iteration--------------------------------------------------------
-    iteration = 0
+    iteration = 100000
     writer.add_graph(dis32, gene32(torch.randn(1,128,device=device)))   #show graph of discriminator in tensorboard
     while iteration < maxiter:
         for i_imag, image in enumerate(train_loader):#need reconstruction using iterator

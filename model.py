@@ -6,16 +6,16 @@ import torchvision.transforms as T
 from torch.utils.tensorboard import SummaryWriter
 #structure of generator and discriminator
 gene_blocklist = [
-    {'kernel':2, 'out_channel':256, 'stride':2},
-    {'kernel':2, 'out_channel':128, 'stride':2},
-    {'kernel':2, 'out_channel':64, 'stride':2},
-    {'kernel':2, 'out_channel':32, 'stride':2},
+    {'kernel':3, 'out_channel':256, 'stride':2},
+    {'kernel':3, 'out_channel':128, 'stride':2},
+    {'kernel':3, 'out_channel':64,  'stride':2},
 ]
 block_list = [
     {'kernel':3, 'out_channel':128, 'stride':2},
     {'kernel':3, 'out_channel':256, 'stride':2},
-    {'kernel':3, 'out_channel':512, 'stride':2},
+    {'kernel':3, 'out_channel':256, 'stride':2},
 ]
+
 #def convtrans resblock
 class Tresblock1(torch.nn.Module):
     def __init__(self, in_channels:int, out_channels:int, kernel_size, device='cpu', stride=1) -> None:
@@ -27,10 +27,34 @@ class Tresblock1(torch.nn.Module):
             nn.UpsamplingBilinear2d(scale_factor=stride),
             nn.Conv2d(in_channels, out_channels, kernel_size=1, padding='same', bias=False, device=device)
         )
+        self.ReLU = nn.ReLU(True)
     def forward(self, x):
         hid = self.convT2d(x)
         hid = self.batchnorm(hid)
-        out = nn.ReLU()(hid)  + self.identity(x)
+        out = self.ReLU(hid)  + self.identity(x)
+        return out
+
+class Tresblock2(torch.nn.Module):
+    def __init__(self, in_channels:int, out_channels:int, kernel_size, device='cpu', stride=1) -> None:
+        super(Tresblock2, self).__init__()
+        self.convT2d1 = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, 
+        padding=1, output_padding=1, device=device, bias=False)
+        self.batchnorm1 = nn.BatchNorm2d(out_channels, device=device)
+        self.convT2d2 = nn.ConvTranspose2d(out_channels, out_channels, kernel_size, stride=1, 
+        padding=1, device=device, bias=False)
+        self.batchnorm2 = nn.BatchNorm2d(out_channels, device=device)
+        self.identity = nn.Sequential(
+            nn.UpsamplingBilinear2d(scale_factor=stride),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, padding='same', bias=False, device=device)
+        )
+        self.ReLU = nn.ReLU(True)
+    def forward(self, x):
+        hid = self.convT2d1(x)
+        hid = self.batchnorm1(hid)
+        hid = self.ReLU(hid)
+        hid = self.convT2d2(hid)
+        hid = self.batchnorm2(hid) + self.identity(x)
+        out = self.ReLU(hid)
         return out
 #resblock without bn
 class resblock(torch.nn.Module):
@@ -45,24 +69,49 @@ class resblock(torch.nn.Module):
         out = self.relu(out)
         out = self.conv2(out)
         out+= self.downsample(x)
-        out = nn.ReLU(inplace=True)(out)
+        out = self.relu(out)
         return out
-
+class resblock_bn(torch.nn.Module):
+    def __init__(self, in_channel:int, out_channel:int, stride:int = 1, dilation:int=1, device = 'cpu') -> None:
+        super(resblock_bn, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=in_channel, out_channels=out_channel, kernel_size=3, stride=stride, padding=dilation, dilation=dilation, bias=False, device=device)
+        self.bn1 = nn.BatchNorm2d(out_channel, device=device)
+        self.conv2 = nn.Conv2d(in_channels=out_channel, out_channels=out_channel, kernel_size=3, padding='same', bias=False, device=device)
+        self.bn2 = nn.BatchNorm2d(out_channel, device=device)
+        self.downsample = nn.Conv2d(in_channels=in_channel, out_channels=out_channel, kernel_size=1, stride=stride, bias=False, device=device)
+        self.relu = nn.ReLU(inplace=True)
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out = self.bn2(out) + self.downsample(x)
+        out = self.relu(out)
+        return out
 # generatar model
 #-------------------------------structure of generator---------------------------------------
 #preprocess step(linear, relu)   input:batchsize*input_shape    output:batchsize*channel*n*n
-#Tresblock*n inchannel  outchannel
-#   convT2d
-#   batchnorm
-#   ReLU
-#   out + upsampling(x)
+#111111111111111111111111111111111111111111111111111111111111111
+#1Tresblock1*n inchannel  outchannel if kernelsize=2
+#1  convT2d
+#1   batchnorm
+#1   ReLU
+#1   out + upsampling(x)
+#1 Tresblock2*n inchannel outchannel if kernelsize=3    <the original form in paper but larger
+#1   convT2d
+#1   batchnorm
+#1   ReLU
+#1   convT2d
+#1   batchnorm + upsampling(x)
+#1   ReLU
+#1111111111111111111111111111111111111111111111111111111111111111
 #output layer inchannel   3*figsize*figsize
 #   convT2d
 #   Tanh
 #--------------------------------------------------------------------------------------------
 #Caution: output is in range [-1,1], should be convert linearly into [0,1] or [0,255]
 class Generator(torch.nn.Module):
-    def __init__(self, input_shape:int, blocklist, figsize:int, device='cpu') -> None:
+    def __init__(self, input_shape:int, blocklist, figsize:int, device='cpu', Simple = False) -> None:
         super(Generator, self).__init__()
         self.device = device
         in_channel = blocklist[0]['out_channel']*2
@@ -72,7 +121,18 @@ class Generator(torch.nn.Module):
         for layer in blocklist:
             #change channels
             #apply resblock
-            Layers.append(Tresblock1(in_channel, layer['out_channel'], layer['kernel'], stride=2, device=device))
+            if Simple:
+                Layers.extend([
+                    nn.ConvTranspose2d(in_channel, layer['out_channel'], layer['kernel'], layer['stride'], padding=1, bias=False),
+                    nn.BatchNorm2d(layer['out_channel']),
+                    nn.ReLU(True),
+                ])
+            else:
+                if layer['kernel']==2:
+                    Layers.append(Tresblock1(in_channel, layer['out_channel'], kernel_size=2, stride=2, device=device))
+                elif layer['kernel']==3:
+                    Layers.append(Tresblock2(in_channel, layer['out_channel'], kernel_size=3, stride=2, device=device))
+            
             self.input_size = self.input_size//layer['stride']
             in_channel = layer['out_channel']
         #give rgb data
@@ -134,12 +194,19 @@ class Discriminator(torch.nn.Module):
                 #resampling
                 in_channel = layer['out_channel']
                 self.figsize = self.figsize//layer['stride']
-        else:
+        elif use_res==True:
             for layer in block_list:
                 Layers.append(resblock(in_channel, layer['out_channel'], stride=layer['stride'], device=device))
                 in_channel = layer['out_channel']
                 self.figsize = self.figsize//layer['stride']
-             
+        elif use_res=='bn':
+            Layers.append(nn.Conv2d(in_channel, block_list[0]['out_channel'], 3, padding='same', bias=False, device=device))
+            Layers.append(nn.ReLU())
+            in_channel = block_list[0]['out_channel']
+            for layer in block_list:
+                Layers.append(resblock_bn(in_channel, layer['out_channel'], stride=layer['stride'], device=device))
+                in_channel = layer['out_channel']
+                self.figsize = self.figsize//layer['stride']
         self.seq = nn.Sequential(*Layers)
         self.outlinear = nn.Linear(in_features=self.figsize**2*in_channel, out_features=1,device=device)
         self.outchannel = in_channel
@@ -175,9 +242,8 @@ def train_discrminator(model:Discriminator, real_data:torch.Tensor, fake_data:to
     x_mix = torch.tensordot(torch.diag(mixconst), real_data, dims=[[0],[0]]) \
         + torch.tensordot(torch.diag(1-mixconst), fake_data, dims=[[0],[0]])
     x_mix.requires_grad_()
-    model.zero_grad()
     model.eval()
-    grad_mix = torch.autograd.grad(model(x_mix).sum(), x_mix, create_graph=True, retain_graph=True)[0]
+    grad_mix = torch.autograd.grad(model(x_mix).sum(), x_mix, create_graph=True, retain_graph=True, only_inputs=True)[0]
     model.train()
     #grad_mix_check =  torch.autograd.grad(model(x_mix), x_mix, grad_outputs=torch.ones(x_mix.size()).to(device), create_graph=True, retain_graph=True)[0]
     gradient_loss = (k*torch.sum(grad_mix**2, dim=[1,2,3])**(p/2)).mean()
@@ -200,16 +266,20 @@ def train_generator(g_model:Generator, d_model:Discriminator, randinput:torch.Te
 
 if __name__=='__main__':
     device = 'cuda'
-    writer = SummaryWriter('./runs/exp1-cifar10/no_batchnorm')
     batchsize = 64
     maxiter = 1e5
 #--------------------------------------------------------------------------------------
     gene32 = Generator(128,blocklist=gene_blocklist, figsize=32, device=device)
     #gene32 = wgan_gp.Generator().to(device)
-    dis32 = Discriminator(32, blocklist=block_list, device=device)
+    dis32 = Discriminator(32, blocklist=block_list, device=device,use_res='bn')
     #dis32 = wgan_gp.Discriminator().to(device)
     optim_g = torch.optim.Adam(gene32.parameters(), lr=2e-4)
     optim_d = torch.optim.Adam(dis32.parameters(), lr=2e-4)
+    print(get_param_num(gene32))
+    print(get_param_num(dis32))
+    resnet18 = torchvision.models.resnet18(pretrained=True).to(device)
+    print(get_param_num(resnet18))
+    exit()
 #-------------------------------------dataset------------------------------------------
     transform = T.Compose(
     [T.ToTensor(),
@@ -219,7 +289,7 @@ if __name__=='__main__':
     test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batchsize, shuffle=True, drop_last=True)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batchsize, shuffle=True, drop_last=True)
-    
+    writer = SummaryWriter('./runs/exp1-cifar10/no_batchnorm')
     iteration = 0
     writer.add_graph(dis32, gene32(torch.randn(1,128,device=device)))
     while iteration < maxiter:
