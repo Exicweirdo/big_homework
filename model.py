@@ -56,7 +56,7 @@ class Tresblock2(torch.nn.Module):
         hid = self.batchnorm2(hid) + self.identity(x)
         out = self.ReLU(hid)
         return out
-#resblock without bn
+#resblock without batchnorm
 class resblock(torch.nn.Module):
     def __init__(self, in_channel:int, out_channel:int, stride:int = 1, dilation:int=1, device = 'cpu') -> None:
         super(resblock, self).__init__()
@@ -89,27 +89,30 @@ class resblock_bn(torch.nn.Module):
         out = self.relu(out)
         return out
 # generatar model
-#-------------------------------structure of generator---------------------------------------
-#preprocess step(linear, relu)   input:batchsize*input_shape    output:batchsize*channel*n*n
-#111111111111111111111111111111111111111111111111111111111111111
-#1Tresblock1*n inchannel  outchannel if kernelsize=2
-#1  convT2d
-#1   batchnorm
-#1   ReLU
-#1   out + upsampling(x)
-#1 Tresblock2*n inchannel outchannel if kernelsize=3    <the original form in paper but larger
-#1   convT2d
-#1   batchnorm
-#1   ReLU
-#1   convT2d
-#1   batchnorm + upsampling(x)
-#1   ReLU
-#1111111111111111111111111111111111111111111111111111111111111111
-#output layer inchannel   3*figsize*figsize
-#   convT2d
-#   Tanh
-#--------------------------------------------------------------------------------------------
-#Caution: output is in range [-1,1], should be convert linearly into [0,1] or [0,255]
+'''
+-------------------------------structure of generator---------------------------------------
+- STEP1: preprocess step(linear, relu)   input:batchsize*input_shape    output:batchsize*channel*n*n
+-----------------------------------------------------------------
+- STEP2: Tresblock
+  - CASE1: Tresblock1*n inchannel  outchannel if kernelsize=2
+    - convT2d
+    - batchnorm
+    - ReLU
+    - out + upsampling(x)
+  - CASE2: Tresblock2*n inchannel outchannel if kernelsize=3    <the original form in paper but larger
+    - convT2d
+    - batchnorm
+    - ReLU
+    - convT2d
+    - batchnorm + upsampling(x)
+    - ReLU
+-----------------------------------------------------------------
+STEP3: output layer inchannel   3*figsize*figsize
+    - convT2d
+    - Tanh
+--------------------------------------------------------------------------------------------
+'''
+#Caution: output is in range [-1,1] and should be linearly converted into [0,1] or [0,255]
 class Generator(torch.nn.Module):
     def __init__(self, input_shape:int, blocklist, figsize:int, device='cpu', Simple = False) -> None:
         super(Generator, self).__init__()
@@ -135,7 +138,7 @@ class Generator(torch.nn.Module):
             
             self.input_size = self.input_size//layer['stride']
             in_channel = layer['out_channel']
-        #give rgb data
+        # give rgb data
         Layers.extend([
             nn.ConvTranspose2d(in_channel, 3, kernel_size=2, stride=2, device=device),
             nn.Tanh()
@@ -160,22 +163,24 @@ class Generator(torch.nn.Module):
                     nn.init.constant_(m.bias, 0.0)
         return 0
 # generatar model
-#-------------------------------structure of discriminator---------------------------------------
-#recieve batchsize*3*input_size*input_size tensor as input(generator output, img should normalized to [0,1] or N(0.5,0.5))
-#if use_res==True
-#   resblock*n inchannel(first is 3)  outchannel
-#       conv2d(no bias)
-#       ReLU
-#       conv2d(no bias)
-#       out + downsampling(x)
-#       ReLU
-#else
-#   [conv2d
-#   LeakyReLU]*n
-#
-#output layer
-#   linear
-#--------------------------------------------------------------------------------------------
+'''
+-------------------------------structure of discriminator---------------------------------------
+- recieve batchsize*3*input_size*input_size tensor as input(generator output, img should normalized to [0,1] or N(0.5,0.5))
+- if use_res==True
+    resblock*n inchannel(first is 3)  outchannel
+       conv2d(no bias)
+       ReLU
+       conv2d(no bias)
+       out + downsampling(x)
+       ReLU
+- else
+    [conv2d
+    LeakyReLU]*n
+
+- output layer
+   linear
+------------------------------------------------------------------------------------------------
+'''
 class Discriminator(torch.nn.Module):
     def __init__(self, input_size:int, blocklist, device = 'cpu', use_res = False) -> None:
         super(Discriminator, self).__init__()
