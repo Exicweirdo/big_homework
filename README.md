@@ -18,5 +18,9 @@ Our trainer for the cifar10 dataset.
 Our trainer for the lsun church dataset.
 ## cifar10
 result in in ani.gif
+## lsun church
+eval result with fid: https://github.com/mseitzer/pytorch-fid. randomly pick 10000 real images and 10000 fake images. 
+lsun church 90000 cht FID:  16.719440690521083.
+Note: according to pytorch-fid, this fid is slightly different from that calculated by tensorflow.
 
-## lsun room
+120000 FID:  27.405582796819232
