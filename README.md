@@ -24,3 +24,4 @@ lsun church 90000 cht FID:  16.719440690521083.
 Note: according to pytorch-fid, this fid is slightly different from that calculated by tensorflow.
 
 120000 FID:  27.405582796819232
+150000 FID:  30.643652300209567
